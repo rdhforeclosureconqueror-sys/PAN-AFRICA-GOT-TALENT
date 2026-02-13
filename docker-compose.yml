@@ -1,0 +1,47 @@
+version: '3.9'
+services:
+  api:
+    build: ./backend
+    ports:
+      - '8000:8000'
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/pagt
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+
+  worker:
+    build: ./backend
+    command: celery -A app.workers.celery_app.celery_app worker -l info
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/pagt
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    command: sh -c "npm install && npm run dev"
+    ports:
+      - '3000:3000'
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pagt
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - '5432:5432'
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'

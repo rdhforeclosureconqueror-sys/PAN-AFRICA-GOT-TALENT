@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: pagt-api
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    autoDeploy: true
+  - type: worker
+    name: pagt-worker
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerCommand: celery -A app.workers.celery_app.celery_app worker -l info
+    autoDeploy: true
+
+  - type: web
+    name: pagt-frontend
+    env: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: .next
+
+databases:
+  - name: pagt-postgres
+    plan: free
+
+  - name: pagt-redis
+    plan: free
