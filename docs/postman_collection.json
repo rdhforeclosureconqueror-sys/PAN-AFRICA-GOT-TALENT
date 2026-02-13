@@ -1,0 +1,26 @@
+{
+  "info": {
+    "name": "PAGT API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth Login",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": {"raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"]},
+        "body": {"mode": "raw", "raw": "{\"email\":\"member@example.com\",\"role\":\"paid_member\"}"}
+      }
+    },
+    {
+      "name": "Stars Earn",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+        "url": {"raw": "{{baseUrl}}/stars/earn", "host": ["{{baseUrl}}"], "path": ["stars", "earn"]}
+      }
+    }
+  ],
+  "variable": [{"key": "baseUrl", "value": "http://localhost:8000"}]
+}
