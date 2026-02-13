@@ -1,7 +1,10 @@
 import uuid
+import os
+import shutil
 from datetime import datetime
+from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, UploadFile, File, Form
 from pydantic import BaseModel, Field
 
 from app.core.auth import get_current_user, require_roles
@@ -11,28 +14,26 @@ from app.services.star_service import calculate_star_reward
 
 router = APIRouter()
 
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+# =========================
+# AUTH
+# =========================
 
 class LoginRequest(BaseModel):
     email: str
     role: str = "paid_member"
 
 
-class StarEarnRequest(BaseModel):
-    actions: list[str] = Field(default_factory=list)
-
-
-class BlackDollarSpendRequest(BaseModel):
-    amount: int
-    feature: str
-
-
-class ContestEntryRequest(BaseModel):
-    video_url: str
-
-
 @router.post("/auth/register")
 def register_member(payload: LoginRequest):
-    return {"member_id": str(uuid.uuid4()), "email": payload.email, "created_at": datetime.utcnow()}
+    return {
+        "member_id": str(uuid.uuid4()),
+        "email": payload.email,
+        "created_at": datetime.utcnow(),
+    }
 
 
 @router.post("/auth/login")
@@ -46,76 +47,78 @@ def me(user: dict = Depends(get_current_user)):
     return user
 
 
-@router.get("/members/{member_id}")
-def get_member(member_id: str, _: dict = Depends(get_current_user)):
-    return {"id": member_id, "tier_level": "top_50", "membership_status": "paid"}
+# =========================
+# STARS
+# =========================
 
-
-@router.patch("/members/{member_id}")
-def update_member(member_id: str, _: dict = Depends(require_roles("admin", "governance_officer"))):
-    return {"id": member_id, "status": "updated"}
+class StarEarnRequest(BaseModel):
+    actions: List[str] = Field(default_factory=list)
 
 
 @router.post("/stars/earn")
 def earn_stars(payload: StarEarnRequest, user: dict = Depends(get_current_user)):
-    return {"member_id": user["id"], "earned": calculate_star_reward(payload.actions)}
+    return {
+        "member_id": user["id"],
+        "earned": calculate_star_reward(payload.actions),
+    }
 
 
-@router.post("/stars/donate")
-def donate_stars(amount: int, target_member_id: str, user: dict = Depends(get_current_user)):
-    return {"from": user["id"], "to": target_member_id, "deducted": amount, "immutable_vote_log": True}
+# =========================
+# BLACK DOLLARS
+# =========================
 
-
-@router.get("/stars/{member_id}")
-def stars_balance(member_id: str, _: dict = Depends(get_current_user)):
-    return {"member_id": member_id, "balance": 10}
-
-
-@router.post("/blackdollars/earn")
-def earn_black_dollars(tier: str, user: dict = Depends(require_roles("admin", "governance_officer"))):
-    return {"tier": tier, "awarded": reward_for_tier(tier), "approved_by": user["id"]}
+class BlackDollarSpendRequest(BaseModel):
+    amount: int
+    feature: str
 
 
 @router.post("/blackdollars/spend")
 def spend_black_dollars(payload: BlackDollarSpendRequest, user: dict = Depends(get_current_user)):
-    return {"member_id": user["id"], "spent": payload.amount, "feature": payload.feature}
+    return {
+        "member_id": user["id"],
+        "spent": payload.amount,
+        "feature": payload.feature,
+    }
 
 
-@router.get("/blackdollars/{member_id}")
-def black_dollar_balance(member_id: str, _: dict = Depends(get_current_user)):
-    return {"member_id": member_id, "balance": 50}
+# =========================
+# CONTEST UPLOAD + ENTRY
+# =========================
 
+@router.post("/contest/upload")
+async def upload_video(
+    file: UploadFile = File(...),
+    user: dict = Depends(require_roles("participant", "admin")),
+):
+    file_ext = file.filename.split(".")[-1]
+    unique_name = f"{uuid.uuid4()}.{file_ext}"
+    file_path = os.path.join(UPLOAD_DIR, unique_name)
 
-@router.post("/contest/entry")
-def submit_contest_entry(payload: ContestEntryRequest, user: dict = Depends(require_roles("participant", "admin"))):
-    return {"entry_id": str(uuid.uuid4()), "member_id": user["id"], "video_url": payload.video_url}
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    return {
+        "message": "Upload successful",
+        "video_url": f"/uploads/{unique_name}",
+    }
 
 
 @router.get("/contest/entries")
-def list_contest_entries(_: dict = Depends(get_current_user)):
-    return [{"entry_id": str(uuid.uuid4()), "stars_received": 3, "status": "approved"}]
+def list_entries(user: dict = Depends(get_current_user)):
+    return [
+        {
+            "entry_id": str(uuid.uuid4()),
+            "member_id": user["id"],
+            "stars_received": 3,
+            "status": "approved",
+        }
+    ]
 
 
 @router.post("/contest/vote")
 def vote_contest(entry_id: str, stars: int, user: dict = Depends(get_current_user)):
-    return {"entry_id": entry_id, "voted_by": user["id"], "stars": stars}
-
-
-@router.get("/ranking")
-def get_ranking(_: dict = Depends(get_current_user)):
-    return {"score_window_days": 30, "bands": ["top_10", "top_25", "top_50"]}
-
-
-@router.get("/admin/leaderboard")
-def admin_leaderboard(_: dict = Depends(require_roles("admin", "governance_officer"))):
-    return [{"member_id": str(uuid.uuid4()), "score": 42, "fraud_flag": False}]
-
-
-@router.post("/admin/reward_allocation")
-def reward_allocation(_: dict = Depends(require_roles("admin", "governance_officer"))):
-    return {"status": "pending_manual_approval", "audit_logged": True}
-
-
-@router.get("/admin/audit_logs")
-def audit_logs(_: dict = Depends(require_roles("admin", "governance_officer"))):
-    return [{"action_type": "star_earned", "immutable": True}]
+    return {
+        "entry_id": entry_id,
+        "voted_by": user["id"],
+        "stars": stars,
+    }
